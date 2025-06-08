@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 
 # Ustawienia API
-API_KEY = "9517e36e5cc8a496ddcb4673a4b78c5c"
+API_KEY = "304fdfaedad346adb5f202319250806"
 CITY = "Pruszcz Gdański"
 API_URL = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={CITY}&aqi=no"
 
