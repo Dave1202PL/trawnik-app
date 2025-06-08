@@ -75,15 +75,17 @@ if menu == "📅 Planowanie koszenia":
     height = st.slider("Poziom wysokości kosiarki (1 - nisko, 5 - wysoko)", 1, 5, 3)
     force_save = st.checkbox("Ignoruj pogodę przy zapisie koszenia")
 
-    if st.button("Zapisz nowe koszenie"):
-        today = datetime.now().strftime("%Y-%m-%d")
-        if not force_save and weather and (weather["is_rain"] or weather["humidity"] > 85):
-            if st.confirm("Pogoda nie sprzyja koszeniu. Czy na pewno chcesz zapisać koszenie?"):
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if weather and (weather["is_rain"] or weather["humidity"] > 85) and not force_save:
+        st.warning("⚠️ Pogoda nie sprzyja koszeniu (deszcz lub zbyt wysoka wilgotność).")
+        confirm_bad_weather = st.checkbox("Mimo to potwierdzam koszenie", key="confirm_bad_weather")
+        if confirm_bad_weather:
+            if st.button("Zapisz koszenie mimo pogody"):
                 add_entry(today, height)
                 st.success("Zapisano koszenie mimo niekorzystnej pogody.")
-            else:
-                st.info("Anulowano zapis.")
-        else:
+    else:
+        if st.button("Zapisz nowe koszenie"):
             add_entry(today, height)
             st.success("Koszenie zapisane!")
 
