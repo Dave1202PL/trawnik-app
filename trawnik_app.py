@@ -1,84 +1,122 @@
-
 import streamlit as st
 import requests
 import json
 from datetime import datetime, timedelta
 
+# Ustawienia API
 API_KEY = "9517e36e5cc8a496ddcb4673a4b78c5c"
-MIASTO = "Pruszcz Gdański"
-HISTORIA_PLIKU = "koszenia.json"
+CITY = "Pruszcz Gdański"
+API_URL = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={CITY}&aqi=no"
 
-def pobierz_pogode():
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={MIASTO}&appid={API_KEY}&units=metric&lang=pl"
-    res = requests.get(url)
-    return res.json()
-
-def zapisz_koszenie(data, poziom):
+# Funkcja pobierania pogody
+def get_weather():
     try:
-        with open(HISTORIA_PLIKU, "r") as f:
-            historia = json.load(f)
-    except FileNotFoundError:
-        historia = []
-    historia.append({"data": data, "poziom": poziom})
-    with open(HISTORIA_PLIKU, "w") as f:
-        json.dump(historia, f)
-
-def ostatnie_koszenie():
-    try:
-        with open(HISTORIA_PLIKU, "r") as f:
-            historia = json.load(f)
-        return historia[-1]
-    except:
+        response = requests.get(API_URL)
+        data = response.json()
+        condition = data["current"]["condition"]["text"]
+        temp_c = data["current"]["temp_c"]
+        is_rain = "rain" in condition.lower()
+        humidity = data["current"]["humidity"]
+        return {
+            "condition": condition,
+            "temp_c": temp_c,
+            "is_rain": is_rain,
+            "humidity": humidity
+        }
+    except Exception as e:
         return None
 
-def ile_dni_od_koszenia(data):
-    data_k = datetime.strptime(data, "%Y-%m-%d").date()
-    return (datetime.now().date() - data_k).days
+# Funkcje do obsługi pliku z koszeniami
+DATA_FILE = "koszenia.json"
 
-def dni_do_koszenia(poziom):
-    return {1: 5, 2: 6, 3: 8, 4: 10, 5: 12}.get(poziom, 7)
+def load_data():
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
 
-st.title("🌱 Kiedy kosić trawnik?")
-st.caption("Pogodowy doradca trawnika – wersja Panicza")
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
-st.header("1. Zapisz nowe koszenie")
-data_koszenia = st.date_input("Data koszenia", value=datetime.today())
-poziom = st.slider("Poziom wysokości kosiarki (1 = najkrótsze)", 1, 5, 3)
-if st.button("Zapisz koszenie"):
-    zapisz_koszenie(data_koszenia.strftime("%Y-%m-%d"), poziom)
-    st.success("Zapisano ostatnie koszenie.")
+def add_entry(date, height_level):
+    data = load_data()
+    data.append({"date": date, "height_level": height_level})
+    save_data(data)
 
-st.header("2. Czy to już czas?")
-ostatnie = ostatnie_koszenie()
-if ostatnie:
-    dni_od = ile_dni_od_koszenia(ostatnie['data'])
-    sugerowane_dni = dni_do_koszenia(ostatnie['poziom'])
+def delete_entry(index):
+    data = load_data()
+    if 0 <= index < len(data):
+        del data[index]
+        save_data(data)
 
-    st.write(f"🗓 Ostatnie koszenie: **{ostatnie['data']}** (poziom {ostatnie['poziom']})")
-    st.write(f"⏳ Minęło: **{dni_od} dni** – rekomendowana przerwa: **{sugerowane_dni} dni**")
+# Streamlit UI
+st.set_page_config(page_title="Trawnik App", layout="centered")
+st.title("🌿 Aplikacja do koszenia trawnika")
 
-    pogoda = pobierz_pogode()
-    temp = pogoda['main']['temp']
-    opady = pogoda.get('rain', {}).get('1h', 0)
-    stan_nieba = pogoda['weather'][0]['description']
+menu = st.sidebar.radio("Menu", ["📅 Planowanie koszenia", "📖 Historia koszeń"])
 
-    st.write(f"🌡 Temperatura: **{temp}°C**, 🌧 Opady (1h): **{opady} mm**, 🌤 Niebo: {stan_nieba}")
+if menu == "📅 Planowanie koszenia":
+    st.subheader("Dzisiejsza pogoda w Pruszczu Gdańskim")
+    weather = get_weather()
 
-    if dni_od >= sugerowane_dni:
-        if opady > 0 or temp < 10:
-            st.warning("🛑 To czas na koszenie, ale pogoda jest niesprzyjająca.")
-        else:
-            st.success("✅ To idealny dzień na koszenie trawnika!")
+    if weather:
+        st.write(f"🌡️ Temperatura: {weather['temp_c']}°C")
+        st.write(f"🌧️ Warunki: {weather['condition']}")
+        st.write(f"💧 Wilgotność: {weather['humidity']}%")
     else:
-        st.info("⏳ Jeszcze trochę – trawa nie zdążyła odrosnąć wystarczająco.")
-else:
-    st.info("Nie zapisano jeszcze żadnego koszenia.")
+        st.warning("Nie udało się pobrać danych pogodowych.")
 
-st.header("3. Historia koszeń")
-try:
-    with open(HISTORIA_PLIKU, "r") as f:
-        historia = json.load(f)
-    for wpis in reversed(historia[-5:]):
-        st.text(f"{wpis['data']} – Poziom {wpis['poziom']}")
-except:
-    st.write("Brak danych.")
+    st.divider()
+
+    st.subheader("📌 Zapisz nowe koszenie")
+
+    height = st.slider("Poziom wysokości kosiarki (1 - nisko, 5 - wysoko)", 1, 5, 3)
+    force_save = st.checkbox("Ignoruj pogodę przy zapisie koszenia")
+
+    if st.button("Zapisz nowe koszenie"):
+        today = datetime.now().strftime("%Y-%m-%d")
+        if not force_save and weather and (weather["is_rain"] or weather["humidity"] > 85):
+            if st.confirm("Pogoda nie sprzyja koszeniu. Czy na pewno chcesz zapisać koszenie?"):
+                add_entry(today, height)
+                st.success("Zapisano koszenie mimo niekorzystnej pogody.")
+            else:
+                st.info("Anulowano zapis.")
+        else:
+            add_entry(today, height)
+            st.success("Koszenie zapisane!")
+
+    st.divider()
+    st.subheader("📅 Kiedy znów kosić?")
+
+    data = load_data()
+    if data:
+        last = data[-1]
+        days_passed = (datetime.now() - datetime.strptime(last["date"], "%Y-%m-%d")).days
+        suggested_wait = 4 + (5 - int(last["height_level"])) * 1
+        next_mow = int(suggested_wait - days_passed)
+
+        if next_mow <= 0:
+            st.success("✅ Możesz już kosić! Trawa prawdopodobnie dojrzała.")
+        else:
+            st.info(f"🕒 Zalecane koszenie za {next_mow} dni.")
+    else:
+        st.write("Brak danych o poprzednich koszeniach.")
+
+elif menu == "📖 Historia koszeń":
+    st.subheader("📖 Historia koszeń")
+    data = load_data()
+    if data:
+        for i, entry in enumerate(data):
+            col1, col2, col3 = st.columns([3, 2, 1])
+            with col1:
+                st.write(f"📅 {entry['date']}")
+            with col2:
+                st.write(f"🔧 Poziom: {entry['height_level']}")
+            with col3:
+                if st.button("❌ Usuń", key=f"del_{i}"):
+                    delete_entry(i)
+                    st.experimental_rerun()
+    else:
+        st.info("Brak zapisanych koszeń.")
